@@ -6,15 +6,15 @@ from .ops import causal_conv, mu_law_encode
 def create_variable(name, shape):
     '''Create a convolution filter variable with the specified name and shape,
     and initialize it using Xavier initialition.'''
-    initializer = tf.contrib.layers.xavier_initializer_conv2d()
-    variable = tf.Variable(initializer(shape=shape), name=name)
+    initializer = tf.contrib.layers.xavier_initializer_conv2d(dtype=tf.float16)
+    variable = tf.Variable(initializer(shape=shape), name=name, dtype=tf.float16)
     return variable
 
 
 def create_bias_variable(name, shape):
     '''Create a bias variable with the specified name and shape and initialize
     it to zero.'''
-    initializer = tf.constant_initializer(value=0.0, dtype=tf.float32)
+    initializer = tf.constant_initializer(value=0.0, dtype=tf.float16)
     return tf.Variable(initializer(shape=shape), name)
 
 
@@ -338,7 +338,7 @@ class WaveNetModel(object):
 
         q = tf.FIFOQueue(
             1,
-            dtypes=tf.float32,
+            dtypes=tf.float16,
             shapes=(self.batch_size, self.quantization_channels))
         init = q.enqueue_many(
             tf.zeros((1, self.batch_size, self.quantization_channels)))
@@ -358,7 +358,7 @@ class WaveNetModel(object):
 
                     q = tf.FIFOQueue(
                         dilation,
-                        dtypes=tf.float32,
+                        dtypes=tf.float16,
                         shapes=(self.batch_size, self.residual_channels))
                     init = q.enqueue_many(
                         tf.zeros((dilation, self.batch_size,
@@ -410,7 +410,7 @@ class WaveNetModel(object):
             encoded = tf.one_hot(
                 input_batch,
                 depth=self.quantization_channels,
-                dtype=tf.float32)
+                dtype=tf.float16)
             shape = [self.batch_size, -1, self.quantization_channels]
             encoded = tf.reshape(encoded, shape)
         return encoded
@@ -430,7 +430,7 @@ class WaveNetModel(object):
             out = tf.reshape(raw_output, [-1, self.quantization_channels])
             # Cast to float64 to avoid bug in TensorFlow
             proba = tf.cast(
-                tf.nn.softmax(tf.cast(out, tf.float64)), tf.float32)
+                tf.nn.softmax(tf.cast(out, tf.float64)), tf.float16)
             last = tf.slice(
                 proba,
                 [tf.shape(proba)[0] - 1, 0],
@@ -454,7 +454,7 @@ class WaveNetModel(object):
             raw_output = self._create_generator(encoded)
             out = tf.reshape(raw_output, [-1, self.quantization_channels])
             proba = tf.cast(
-                tf.nn.softmax(tf.cast(out, tf.float64)), tf.float32)
+                tf.nn.softmax(tf.cast(out, tf.float64)), tf.float16)
             last = tf.slice(
                 proba,
                 [tf.shape(proba)[0] - 1, 0],
@@ -493,9 +493,9 @@ class WaveNetModel(object):
 
                 prediction = tf.reshape(raw_output,
                                         [-1, self.quantization_channels])
-                loss = tf.nn.softmax_cross_entropy_with_logits(
-                    prediction,
-                    tf.reshape(shifted, [-1, self.quantization_channels]))
+                logits = tf.cast(prediction, dtype=tf.float32, name='logits')
+                labels = tf.cast(tf.reshape(shifted, [-1, self.quantization_channels]), dtype=tf.float32, name="labels" )
+                loss = tf.nn.softmax_cross_entropy_with_logits(logits, labels)
                 reduced_loss = tf.reduce_mean(loss)
 
                 tf.scalar_summary('loss', reduced_loss)
