@@ -23,7 +23,7 @@ def manual_mu_law_encode(signal, quantization_channels):
 def manual_mu_law_decode(signal, quantization_channels):
     # Calculate inverse mu-law companding and dequantization
     mu = quantization_channels - 1
-    y = signal.astype(np.float32)
+    y = signal.astype(np.float16)
 
     y = 2 * (y / mu) - 1
     x = np.sign(y) * (1.0 / mu) * ((1.0 + mu)**abs(y) - 1.0)
@@ -33,7 +33,7 @@ def manual_mu_law_decode(signal, quantization_channels):
 class TestMuLaw(tf.test.TestCase):
 
     def testEncodeDecode(self):
-        x = np.linspace(-1, 1, 1000).astype(np.float32)
+        x = np.linspace(-1, 1, 1000).astype(np.float16)
         channels = 256
 
         # Test whether decoded signal is roughly equal to
@@ -52,7 +52,7 @@ class TestMuLaw(tf.test.TestCase):
         self.assertAllClose(x1, x2)
 
     def testEncodeIsSurjective(self):
-        x = np.linspace(-1, 1, 10000).astype(np.float32)
+        x = np.linspace(-1, 1, 10000).astype(np.float16)
         channels = 123
         with self.test_session() as sess:
             encoded = sess.run(mu_law_encode(x, channels))
@@ -62,7 +62,7 @@ class TestMuLaw(tf.test.TestCase):
         channels = 256
         number_of_samples = 10
         x = np.array([-1.0, 1.0, 0.6, -0.25, 0.01,
-                      0.33, -0.9999, 0.42, 0.1, -0.45]).astype(np.float32)
+                      0.33, -0.9999, 0.42, 0.1, -0.45]).astype(np.float16)
         encoded_manual = np.array([0, 255, 243, 32, 157,
                                    230, 0, 235, 203, 18]).astype(np.int32)
 
@@ -76,7 +76,7 @@ class TestMuLaw(tf.test.TestCase):
 
         channels = 256
         number_of_samples = 2048
-        x = np.random.uniform(-1, 1, number_of_samples).astype(np.float32)
+        x = np.random.uniform(-1, 1, number_of_samples).astype(np.float16)
         manual_encode = manual_mu_law_encode(x, channels)
 
         with self.test_session() as sess:
@@ -89,7 +89,7 @@ class TestMuLaw(tf.test.TestCase):
 
         channels = 256
         number_of_samples = 1024
-        x = np.zeros(number_of_samples).astype(np.float32)
+        x = np.zeros(number_of_samples).astype(np.float16)
         x.fill(np.random.uniform(-1, 1))
         manual_encode = manual_mu_law_encode(x, channels)
 
@@ -104,7 +104,7 @@ class TestMuLaw(tf.test.TestCase):
         channels = 256
         number_of_samples = 1024
         number_of_steps = 2.0 / number_of_samples
-        x = np.arange(-1.0, 1.0, number_of_steps).astype(np.float32)
+        x = np.arange(-1.0, 1.0, number_of_steps).astype(np.float16)
         manual_encode = manual_mu_law_encode(x, channels)
 
         with self.test_session() as sess:
@@ -117,7 +117,7 @@ class TestMuLaw(tf.test.TestCase):
 
         channels = 256
         number_of_samples = 1024
-        x = np.zeros(number_of_samples).astype(np.float32)
+        x = np.zeros(number_of_samples).astype(np.float16)
         manual_encode = manual_mu_law_encode(x, channels)
 
         with self.test_session() as sess:
@@ -130,7 +130,7 @@ class TestMuLaw(tf.test.TestCase):
 
         channels = -256
         number_of_samples = 1024
-        x = np.zeros(number_of_samples).astype(np.float32)
+        x = np.zeros(number_of_samples).astype(np.float16)
         manual_encode = manual_mu_law_encode(x, channels)
 
         with self.test_session() as sess:
@@ -141,7 +141,7 @@ class TestMuLaw(tf.test.TestCase):
 
         channels = 256
         number_of_samples = 10
-        x = np.random.uniform(-1, 1, number_of_samples).astype(np.float32)
+        x = np.random.uniform(-1, 1, number_of_samples).astype(np.float16)
         y = manual_mu_law_encode(x, channels)
         manual_decode = manual_mu_law_decode(y, channels)
 

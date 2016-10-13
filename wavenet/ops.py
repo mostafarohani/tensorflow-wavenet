@@ -46,7 +46,7 @@ def mu_law_encode(audio, quantization_channels):
     with tf.name_scope('encode'):
         mu = quantization_channels - 1
         # Perform mu-law companding transformation (ITU-T, 1988).
-        magnitude = tf.log(1 + mu * tf.abs(audio)) / tf.log(1. + mu)
+        magnitude = tf.log(tf.cast(1, dtype=tf.float16) + tf.cast(mu, dtype=tf.float16) * tf.abs(audio)) / tf.log(tf.cast(1. + mu,dtype=tf.float16))
         signal = tf.sign(audio) * magnitude
         # Quantize signal to the specified number of levels.
         return tf.cast((signal + 1) / 2 * mu + 0.5, tf.int32)
@@ -57,7 +57,7 @@ def mu_law_decode(output, quantization_channels):
     with tf.name_scope('decode'):
         mu = quantization_channels - 1
         # Map values back to [-1, 1].
-        casted = tf.cast(output, tf.float32)
+        casted = tf.cast(output, tf.float16)
         signal = 2 * (casted / mu) - 1
         # Perform inverse of mu-law transformation.
         magnitude = (1 / mu) * ((1 + mu)**abs(signal) - 1)

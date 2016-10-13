@@ -422,7 +422,7 @@ class WaveNetModel(object):
         as an input, see predict_proba_incremental for a faster alternative.'''
         with tf.name_scope(name):
             if self.scalar_input:
-                encoded = tf.cast(waveform, tf.float32)
+                encoded = tf.cast(waveform, tf.float16)
                 encoded = tf.reshape(encoded, [-1, 1])
             else:
                 encoded = self._one_hot(waveform)
@@ -477,7 +477,7 @@ class WaveNetModel(object):
             encoded = self._one_hot(input_batch)
             if self.scalar_input:
                 network_input = tf.reshape(
-                    tf.cast(input_batch, tf.float32),
+                    tf.cast(input_batch, tf.float16),
                     [self.batch_size, -1, 1])
             else:
                 network_input = encoded
@@ -493,8 +493,8 @@ class WaveNetModel(object):
 
                 prediction = tf.reshape(raw_output,
                                         [-1, self.quantization_channels])
-                logits = tf.cast(prediction, dtype=tf.float32, name='logits')
-                labels = tf.cast(tf.reshape(shifted, [-1, self.quantization_channels]), dtype=tf.float32, name="labels" )
+                logits = tf.cast(prediction, dtype=tf.float16, name='logits')
+                labels = tf.cast(tf.reshape(shifted, [-1, self.quantization_channels]), dtype=tf.float16, name="labels" )
                 loss = tf.nn.softmax_cross_entropy_with_logits(logits, labels)
                 reduced_loss = tf.reduce_mean(loss)
 

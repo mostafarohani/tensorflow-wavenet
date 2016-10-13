@@ -53,7 +53,7 @@ class TestNet(tf.test.TestCase):
         audio = MakeSineWaves()
         np.random.seed(42)
 
-        audio_tensor = tf.convert_to_tensor(audio, dtype=tf.float32)
+        audio_tensor = tf.convert_to_tensor(audio, dtype=tf.float16)
         loss = self.net.loss(audio_tensor)
         optimizer = tf.train.MomentumOptimizer(learning_rate=LEARN_RATE,
                                                momentum=MOMENTUM)
