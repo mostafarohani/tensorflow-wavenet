@@ -9,7 +9,7 @@ from wavenet import WaveNetModel, time_to_batch, batch_to_time, causal_conv
 
 SAMPLE_RATE_HZ = 2000.0  # Hz
 TRAIN_ITERATIONS = 400
-LEARN_RATE = 0.02
+LEARN_RATE = 0.0003
 SAMPLE_DURATION = 0.2  # Seconds
 MOMENTUM = 0.9
 
@@ -55,7 +55,7 @@ class TestNet(tf.test.TestCase):
 
         audio_tensor = tf.convert_to_tensor(audio, dtype=tf.float16)
         loss = self.net.loss(audio_tensor)
-        optimizer = tf.train.MomentumOptimizer(learning_rate=LEARN_RATE,
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=LEARN_RATE, epsilon=1e-4,
                                                momentum=MOMENTUM)
         trainable = tf.trainable_variables()
         optim = optimizer.minimize(loss, var_list=trainable)
@@ -69,8 +69,8 @@ class TestNet(tf.test.TestCase):
             initial_loss = sess.run(loss)
             for i in range(TRAIN_ITERATIONS):
                 loss_val, _ = sess.run([loss, optim])
-                # if i % 10 == 0:
-                #     print("i: %d loss: %f" % (i, loss_val))
+                if i % 10 == 0:
+                    print("i: %d loss: %f" % (i, loss_val))
 
         # Sanity check the initial loss was larger.
         self.assertGreater(initial_loss, max_allowed_loss)
