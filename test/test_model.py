@@ -5,7 +5,8 @@ import json
 import numpy as np
 import tensorflow as tf
 
-from wavenet import WaveNetModel, time_to_batch, batch_to_time, causal_conv
+from wavenet import (WaveNetModel, time_to_batch, batch_to_time, causal_conv,
+                     optimizer_factory)
 
 SAMPLE_RATE_HZ = 2000.0  # Hz
 TRAIN_ITERATIONS = 400
@@ -34,13 +35,15 @@ def MakeSineWaves():
 class TestNet(tf.test.TestCase):
     def setUp(self):
         self.net = WaveNetModel(batch_size=1,
-                                dilations=[1, 2, 4, 8, 16, 32, 64, 128, 256,
-                                           1, 2, 4, 8, 16, 32, 64, 128, 256],
+                                dilations=[1, 2, 4, 8, 16, 32, 64,
+                                           1, 2, 4, 8, 16, 32, 64],
                                 filter_width=2,
                                 residual_channels=32,
                                 dilation_channels=32,
                                 quantization_channels=256,
                                 skip_channels=32)
+        self.optimizer_type = 'sgd'
+        self.learning_rate = 0.02
 
     # Train a net on a short clip of 3 sine waves superimposed
     # (an e-flat chord).
@@ -87,22 +90,39 @@ class TestNetWithBiases(TestNet):
 
     def setUp(self):
         self.net = WaveNetModel(batch_size=1,
-                                dilations=[1, 2, 4, 8, 16, 32, 64, 128, 256,
-                                           1, 2, 4, 8, 16, 32, 64, 128, 256],
+                                dilations=[1, 2, 4, 8, 16, 32, 64,
+                                           1, 2, 4, 8, 16, 32, 64],
                                 filter_width=2,
                                 residual_channels=32,
                                 dilation_channels=32,
                                 quantization_channels=256,
                                 use_biases=True,
                                 skip_channels=32)
+        self.optimizer_type = 'sgd'
+        self.learning_rate = 0.02
+
+
+class TestNetWithRMSProp(TestNet):
+
+    def setUp(self):
+        self.net = WaveNetModel(batch_size=1,
+                                dilations=[1, 2, 4, 8, 16, 32, 64,
+                                           1, 2, 4, 8, 16, 32, 64],
+                                filter_width=2,
+                                residual_channels=32,
+                                dilation_channels=32,
+                                quantization_channels=256,
+                                skip_channels=32)
+        self.optimizer_type = 'rmsprop'
+        self.learning_rate = 0.001
 
 
 class TestNetWithScalarInput(TestNet):
 
     def setUp(self):
         self.net = WaveNetModel(batch_size=1,
-                                dilations=[1, 2, 4, 8, 16, 32, 64, 128, 256,
-                                           1, 2, 4, 8, 16, 32, 64, 128, 256],
+                                dilations=[1, 2, 4, 8, 16, 32, 64,
+                                           1, 2, 4, 8, 16, 32, 64],
                                 filter_width=2,
                                 residual_channels=32,
                                 dilation_channels=32,
@@ -110,7 +130,10 @@ class TestNetWithScalarInput(TestNet):
                                 use_biases=True,
                                 skip_channels=32,
                                 scalar_input=True,
-                                initial_filter_width=32)
+                                initial_filter_width=4)
+        self.optimizer_type = 'sgd'
+        self.learning_rate = 0.02
+
 
 if __name__ == '__main__':
     tf.test.main()

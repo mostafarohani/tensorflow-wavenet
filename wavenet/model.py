@@ -493,8 +493,8 @@ class WaveNetModel(object):
 
                 prediction = tf.reshape(raw_output,
                                         [-1, self.quantization_channels])
-                logits = tf.cast(prediction, dtype=tf.float16, name='logits')
-                labels = tf.cast(tf.reshape(shifted, [-1, self.quantization_channels]), dtype=tf.float16, name="labels" )
+                logits = tf.cast(prediction, dtype=tf.float32, name='logits')
+                labels = tf.cast(tf.reshape(shifted, [-1, self.quantization_channels]), dtype=tf.float32, name="labels" )
                 loss = tf.nn.softmax_cross_entropy_with_logits(logits, labels)
                 reduced_loss = tf.reduce_mean(loss)
 
