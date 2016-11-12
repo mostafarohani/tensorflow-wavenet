@@ -266,7 +266,7 @@ class TestNet(tf.test.TestCase):
                 feed_dict, speaker_index = CreateTrainingFeedDict(
                     audio, speaker_ids, audio_placeholder, gc_placeholder, i)
                 [results] = sess.run([operations], feed_dict=feed_dict)
-                if i % 100 == 0:
+                if i % 10 == 0:
                     print("i: %d loss: %f" % (i, results[0]))
 
             loss_val = results[0]
@@ -303,11 +303,12 @@ class TestNet(tf.test.TestCase):
                         sess, self.net, False, None)
                     check_waveform(
                         self.assertGreater, generated_waveforms[0], None)
-                    # Check incremental generation
-                    generated_waveform = generate_waveforms(
-                        sess, self.net, True, None)
-                    check_waveform(
-                        self.assertGreater, generated_waveforms[0], None)
+                    if not self.net.scalar_input:
+                        # Check incremental generation
+                        generated_waveform = generate_waveforms(
+                            sess, self.net, True, None)
+                        check_waveform(
+                            self.assertGreater, generated_waveforms[0], None)
 
 
 class TestNetWithBiases(TestNet):
@@ -374,7 +375,7 @@ class TestNetWithScalarInput(TestNet):
                                 initial_filter_width=4)
         self.optimizer_type = 'sgd'
         self.learning_rate = 0.01
-        self.generate = False
+        self.generate = True
         self.momentum = MOMENTUM
         self.global_conditioning = False
         self.train_iters = 1000
