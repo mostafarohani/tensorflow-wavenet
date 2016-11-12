@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .ops import causal_conv, mu_law_encode
+from .ops import causal_conv, mu_law_encode, mu_law_decode
 
 
 def create_variable(name, shape):
@@ -342,12 +342,14 @@ class WaveNetModel(object):
         outputs = []
         current_layer = input_batch
 
+        channels = self.quantization_channels if not self.scalar_input else 1
+
         q = tf.FIFOQueue(
             1,
             dtypes=tf.float32,
-            shapes=(self.batch_size, self.quantization_channels))
+            shapes=(self.batch_size, channels))
         init = q.enqueue_many(
-            tf.zeros((1, self.batch_size, self.quantization_channels)))
+            tf.zeros((1, self.batch_size, channels)))
 
         current_state = q.dequeue()
         push = q.enqueue([current_layer])
@@ -428,8 +430,12 @@ class WaveNetModel(object):
         as an input, see predict_proba_incremental for a faster alternative.'''
         with tf.name_scope(name):
             if self.scalar_input:
-                encoded = tf.cast(waveform, tf.float32)
-                encoded = tf.reshape(encoded, [-1, 1])
+                # waveform comes in as an int selecting one of
+                # quantization_channels (256) levels corresponding to the
+                # mu_law_encoding. So we need to decode it into a float
+                # in the range of -1 to 1.
+                encoded = mu_law_decode(waveform, self.quantization_channels)
+                encoded = tf.reshape(encoded, [self.batch_size, -1, 1])
             else:
                 encoded = self._one_hot(waveform)
             raw_output = self._create_network(encoded)
@@ -450,13 +456,24 @@ class WaveNetModel(object):
         if self.filter_width > 2:
             raise NotImplementedError("Incremental generation does not "
                                       "support filter_width > 2.")
+
         if self.scalar_input:
-            raise NotImplementedError("Incremental generation does not "
-                                      "support scalar input yet.")
+            raise NotImplementedError("Scalar input is not supported by "
+                                      "fast generation.")
+
         with tf.name_scope(name):
 
-            encoded = tf.one_hot(waveform, self.quantization_channels)
-            encoded = tf.reshape(encoded, [-1, self.quantization_channels])
+            if self.scalar_input:
+                # waveform comes in as an int selecting one of
+                # quantization_channels (256) levels corresponding to the
+                # mu_law_encoding. So we need to decode it into a float
+                # in the range of -1 to 1.
+                encoded = mu_law_decode(waveform, self.quantization_channels)
+                encoded = tf.reshape(encoded, [-1, 1])
+            else:
+                encoded = self._one_hot(waveform)
+                encoded = tf.reshape(encoded, [-1, self.quantization_channels])
+
             raw_output = self._create_generator(encoded)
             out = tf.reshape(raw_output, [-1, self.quantization_channels])
             proba = tf.cast(
@@ -478,7 +495,7 @@ class WaveNetModel(object):
         with tf.name_scope(name):
             # We mu-law encode and quantize the input audioform.
             encoded_input = mu_law_encode(input_batch,
-                                        self.quantization_channels)
+                                          self.quantization_channels)
 
             encoded = self._one_hot(encoded_input)
             if self.scalar_input:

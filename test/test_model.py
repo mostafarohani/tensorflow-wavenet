@@ -104,6 +104,7 @@ def check_waveform(assertion, generated_waveform):
     # Expect most of the power to be at the 3 frequencies we trained
     # on.
     assertion(expected_power, 0.9 * power_sum)
+    print("expected power:{}, power_sum:{}".format(expected_power, power_sum))
 
 
 class TestNet(tf.test.TestCase):
@@ -160,8 +161,8 @@ class TestNet(tf.test.TestCase):
             initial_loss = sess.run(loss)
             for i in range(TRAIN_ITERATIONS):
                 loss_val, _ = sess.run([loss, optim])
-                # if i % 10 == 0:
-                #     print("i: %d loss: %f" % (i, loss_val))
+                if i % 10 == 0:
+                    print("i: %d loss: %f" % (i, loss_val))
 
             # Sanity check the initial loss was larger.
             self.assertGreater(initial_loss, max_allowed_loss)
@@ -180,9 +181,11 @@ class TestNet(tf.test.TestCase):
                 generated_waveform = generate_waveform(sess, self.net, False)
                 check_waveform(self.assertGreater, generated_waveform)
 
-                # Check incremental generation
-                generated_waveform = generate_waveform(sess, self.net, True)
-                check_waveform(self.assertGreater, generated_waveform)
+                if not self.net.scalar_input:
+                    # Check incremental generation
+                    generated_waveform = generate_waveform(sess, self.net,
+                                                           True)
+                    check_waveform(self.assertGreater, generated_waveform)
 
 
 class TestNetWithBiases(TestNet):
@@ -236,7 +239,7 @@ class TestNetWithScalarInput(TestNet):
                                 initial_filter_width=4)
         self.optimizer_type = 'rmsprop'
         self.learning_rate = 0.001
-        self.generate = False
+        self.generate = True
         self.momentum = MOMENTUM_SCALAR_INPUT
 
 
