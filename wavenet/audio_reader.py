@@ -91,7 +91,7 @@ class AudioReader(object):
                  gc_enabled,
                  sample_size=None,
                  silence_threshold=None,
-                 queue_size=32):
+                 queue_size=64):
         self.audio_dir = audio_dir
         self.sample_rate = sample_rate
         self.coord = coord
