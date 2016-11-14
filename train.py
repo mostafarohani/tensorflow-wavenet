@@ -238,7 +238,8 @@ def main():
         initial_filter_width=wavenet_params["initial_filter_width"],
         histograms=args.histograms,
         global_condition_channels=args.gc_channels,
-        global_condition_cardinality=reader.gc_category_cardinality)
+        global_condition_cardinality=reader.gc_category_cardinality,
+        residual_postproc=wavenet_params["residual_postproc"])
     if args.l2_regularization_strength == 0:
         args.l2_regularization_strength = None
     loss = net.loss(input_batch=audio_batch,

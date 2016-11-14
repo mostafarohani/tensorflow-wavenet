@@ -159,7 +159,8 @@ def main():
         scalar_input=wavenet_params['scalar_input'],
         initial_filter_width=wavenet_params['initial_filter_width'],
         global_condition_channels=args.gc_channels,
-        global_condition_cardinality=args.gc_cardinality)
+        global_condition_cardinality=args.gc_cardinality,
+        residual_postproc=wavenet_params["residual_postproc"])
 
     samples = tf.placeholder(tf.int32)
 
