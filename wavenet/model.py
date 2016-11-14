@@ -56,7 +56,8 @@ class WaveNetModel(object):
                  initial_filter_width=32,
                  histograms=False,
                  global_condition_channels=None,
-                 global_condition_cardinality=None):
+                 global_condition_cardinality=None,
+                 residual_postproc=False):
         '''Initializes the WaveNet model.
 
         Args:
@@ -93,6 +94,8 @@ class WaveNetModel(object):
                 categories, where N = global_condition_cardinality. If None,
                 then the global_condition tensor is regarded as a vector which
                 must have dimension global_condition_channels.
+            residual_postproc: Boolean to select residual connection for
+                post-processing stage.
 
         '''
         self.batch_size = batch_size
@@ -108,6 +111,7 @@ class WaveNetModel(object):
         self.histograms = histograms
         self.global_condition_channels = global_condition_channels
         self.global_condition_cardinality = global_condition_cardinality
+        self.residual_postproc = residual_postproc
 
         self.variables = self._create_variables()
 
@@ -414,12 +418,14 @@ class WaveNetModel(object):
 
             # We skip connections from the outputs of each layer, adding them
             # all up here.
-            total = sum(outputs)
+            total = tf.add_n(outputs)
             transformed1 = tf.nn.relu(total)
             conv1 = tf.nn.conv1d(transformed1, w1, stride=1, padding="SAME")
             if self.use_biases:
                 conv1 = tf.add(conv1, b1)
             transformed2 = tf.nn.relu(conv1)
+            if self.residual_postproc:
+                transformed2 += total
             conv2 = tf.nn.conv1d(transformed2, w2, stride=1, padding="SAME")
             if self.use_biases:
                 conv2 = tf.add(conv2, b2)
