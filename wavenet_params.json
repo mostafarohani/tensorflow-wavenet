@@ -11,6 +11,7 @@
     "quantization_channels": 256,
     "skip_channels": 256,
     "use_biases": true,
-    "scalar_input": true,
-    "initial_filter_width": 16
+    "scalar_input": false,
+    "initial_filter_width": 32,
+    "residual_postproc": false
 }
