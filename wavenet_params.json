@@ -14,5 +14,5 @@
     "use_biases": true,
     "scalar_input": true,
     "initial_filter_width": 8,
-    "residual_postproc": true
+    "residual_postproc": false
 }

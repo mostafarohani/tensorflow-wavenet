@@ -21,10 +21,10 @@ def create_embedding_table(name, shape):
         return create_variable(name, shape)
 
 
-def create_bias_variable(name, shape):
+def create_bias_variable(name, shape, initial_value=0.0):
     '''Create a bias variable with the specified name and shape and initialize
     it to zero.'''
-    initializer = tf.constant_initializer(value=0.0, dtype=tf.float32)
+    initializer = tf.constant_initializer(value=initial_value, dtype=tf.float32)
     return tf.Variable(initializer(shape=shape), name)
 
 
@@ -216,10 +216,10 @@ class WaveNetModel(object):
                 if self.use_biases:
                     current['postprocess1_bias'] = create_bias_variable(
                         'postprocess1_bias',
-                        [self.skip_channels])
+                        [self.skip_channels], -0.1)
                     current['postprocess2_bias'] = create_bias_variable(
                         'postprocess2_bias',
-                        [self.quantization_channels])
+                        [self.quantization_channels], -0.1)
                 var['postprocessing'] = current
 
         return var
@@ -429,6 +429,8 @@ class WaveNetModel(object):
             conv2 = tf.nn.conv1d(transformed2, w2, stride=1, padding="SAME")
             if self.use_biases:
                 conv2 = tf.add(conv2, b2)
+            if self.residual_postproc:
+                conv2 += total
 
         return conv2
 

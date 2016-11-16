@@ -198,9 +198,9 @@ class TestNet(tf.test.TestCase):
                                 global_condition_channels=None,
                                 global_condition_cardinality=None)
 
-    def _save_net(sess):
+    def _save_net(self, sess):
         saver = tf.train.Saver(var_list=tf.trainable_variables())
-        saver.save(sess, '\tmp\test.ckpt')
+        saver.save(sess, '/tmp/test.ckpt')
 
     # Train a net on a short clip of 3 sine waves superimposed
     # (an e-flat chord).
@@ -282,7 +282,8 @@ class TestNet(tf.test.TestCase):
             self.assertLess(loss_val / initial_loss, 0.02)
 
             if self.generate:
-                # self._save_net(sess)
+                print("saving test.ckpt")
+                self._save_net(sess)
                 if self.global_conditioning:
                     # Check non-fast-generated waveform.
                     generated_waveforms, ids = generate_waveforms(
@@ -403,6 +404,32 @@ class TestNetWithGlobalConditioning(TestNet):
                                 skip_channels=256,
                                 global_condition_channels=NUM_SPEAKERS,
                                 global_condition_cardinality=NUM_SPEAKERS)
+
+class TestNetWithGlobalConditioningWithScalarInput(TestNet):
+    def setUp(self):
+        print('TestNetWithGlobalConditioningScalarInput setup.')
+        sys.stdout.flush()
+        tf.reset_default_graph()
+        self.optimizer_type = 'adam'
+        self.learning_rate = 0.001
+        self.generate = True
+        self.momentum = MOMENTUM
+        self.global_conditioning = True
+        self.train_iters = 1000
+        self.net = WaveNetModel(batch_size=NUM_SPEAKERS,
+                                dilations=[1, 2, 4, 8, 16, 32, 64,
+                                           1, 2, 4, 8, 16, 32, 64],
+                                filter_width=2,
+                                residual_channels=32,
+                                dilation_channels=32,
+                                quantization_channels=QUANTIZATION_CHANNELS,
+                                use_biases=True,
+                                skip_channels=256,
+                                global_condition_channels=NUM_SPEAKERS,
+                                global_condition_cardinality=NUM_SPEAKERS,
+                                scalar_input=True,
+                                initial_filter_width=4)
+
 
 
 if __name__ == '__main__':
