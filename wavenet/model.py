@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from .ops import causal_conv, mu_law_encode
+from .ops import causal_conv, mu_law_encode, mu_law_decode
 
 
 def create_variable(name, shape):
@@ -56,7 +56,8 @@ class WaveNetModel(object):
                  initial_filter_width=32,
                  histograms=False,
                  global_condition_channels=None,
-                 global_condition_cardinality=None):
+                 global_condition_cardinality=None,
+                 residual_postproc=False):
         '''Initializes the WaveNet model.
 
         Args:
@@ -93,6 +94,8 @@ class WaveNetModel(object):
                 categories, where N = global_condition_cardinality. If None,
                 then the global_condition tensor is regarded as a vector which
                 must have dimension global_condition_channels.
+            residual_postproc: Boolean to select residual connection for
+                post-processing stage.
 
         '''
         self.batch_size = batch_size
@@ -108,6 +111,7 @@ class WaveNetModel(object):
         self.histograms = histograms
         self.global_condition_channels = global_condition_channels
         self.global_condition_cardinality = global_condition_cardinality
+        self.residual_postproc = residual_postproc
 
         self.variables = self._create_variables()
 
@@ -420,6 +424,8 @@ class WaveNetModel(object):
             if self.use_biases:
                 conv1 = tf.add(conv1, b1)
             transformed2 = tf.nn.relu(conv1)
+            if self.residual_postproc:
+                transformed2 += total
             conv2 = tf.nn.conv1d(transformed2, w2, stride=1, padding="SAME")
             if self.use_biases:
                 conv2 = tf.add(conv2, b2)
@@ -433,12 +439,14 @@ class WaveNetModel(object):
         outputs = []
         current_layer = input_batch
 
+        channels = self.quantization_channels if not self.scalar_input else 1
+
         q = tf.FIFOQueue(
             1,
             dtypes=tf.float32,
-            shapes=(self.batch_size, self.quantization_channels))
+            shapes=(self.batch_size, channels))
         init = q.enqueue_many(
-            tf.zeros((1, self.batch_size, self.quantization_channels)))
+            tf.zeros((1, self.batch_size, channels)))
 
         current_state = q.dequeue()
         push = q.enqueue([current_layer])
@@ -551,8 +559,12 @@ class WaveNetModel(object):
         as an input, see predict_proba_incremental for a faster alternative.'''
         with tf.name_scope(name):
             if self.scalar_input:
-                encoded = tf.cast(waveform, tf.float32)
-                encoded = tf.reshape(encoded, [-1, 1])
+                # waveform comes in as an int selecting one of
+                # quantization_channels (256) levels corresponding to the
+                # mu_law_encoding. So we need to decode it into a float
+                # in the range of -1 to 1.
+                encoded = mu_law_decode(waveform, self.quantization_channels)
+                encoded = tf.reshape(encoded, [self.batch_size, -1, 1])
             else:
                 encoded = self._one_hot(waveform)
 
@@ -576,13 +588,24 @@ class WaveNetModel(object):
         if self.filter_width > 2:
             raise NotImplementedError("Incremental generation does not "
                                       "support filter_width > 2.")
+
         if self.scalar_input:
-            raise NotImplementedError("Incremental generation does not "
-                                      "support scalar input yet.")
+            raise NotImplementedError("Scalar input is not supported by "
+                                      "fast generation.")
+
         with tf.name_scope(name):
-            encoded = tf.one_hot(waveform, self.quantization_channels)
-            encoded = tf.reshape(encoded, [-1, self.quantization_channels])
             gc_embedding = self._embed_gc(global_condition)
+            if self.scalar_input:
+                # waveform comes in as an int selecting one of
+                # quantization_channels (256) levels corresponding to the
+                # mu_law_encoding. So we need to decode it into a float
+                # in the range of -1 to 1.
+                encoded = mu_law_decode(waveform, self.quantization_channels)
+                encoded = tf.reshape(encoded, [-1, 1])
+            else:
+                encoded = self._one_hot(waveform)
+                encoded = tf.reshape(encoded, [-1, self.quantization_channels])
+
             raw_output = self._create_generator(encoded, gc_embedding)
             out = tf.reshape(raw_output, [-1, self.quantization_channels])
             proba = tf.cast(
@@ -605,7 +628,7 @@ class WaveNetModel(object):
         with tf.name_scope(name):
             # We mu-law encode and quantize the input audioform.
             encoded_input = mu_law_encode(input_batch,
-                                        self.quantization_channels)
+                                          self.quantization_channels)
 
             gc_embedding = self._embed_gc(global_condition_batch)
 
