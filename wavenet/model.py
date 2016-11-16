@@ -234,7 +234,7 @@ class WaveNetModel(object):
             return causal_conv(input_batch, weights_filter, 1)
 
     def _create_dilation_layer(self, input_batch, layer_index, dilation,
-                               global_condition_batch):
+                               global_condition_batch, is_last_layer):
         '''Creates a single causal dilated convolution layer.
 
         Args:
@@ -291,10 +291,13 @@ class WaveNetModel(object):
 
         out = tf.tanh(conv_filter) * tf.sigmoid(conv_gate)
 
-        # The 1x1 conv to produce the residual output
-        weights_dense = variables['dense']
-        transformed = tf.nn.conv1d(
-            out, weights_dense, stride=1, padding="SAME", name="dense")
+        if not is_last_layer:
+            # Last residual layer output does not connect to anything.
+
+            # The 1x1 conv to produce the residual output
+            weights_dense = variables['dense']
+            transformed = tf.nn.conv1d(
+                out, weights_dense, stride=1, padding="SAME", name="dense")
 
         # The 1x1 conv to produce the skip output
         weights_skip = variables['skip']
@@ -302,16 +305,18 @@ class WaveNetModel(object):
             out, weights_skip, stride=1, padding="SAME", name="skip")
 
         if self.use_biases:
-            dense_bias = variables['dense_bias']
+            if not is_last_layer:
+                dense_bias = variables['dense_bias']
+                transformed = transformed + dense_bias
             skip_bias = variables['skip_bias']
-            transformed = transformed + dense_bias
             skip_contribution = skip_contribution + skip_bias
 
         if self.histograms:
             layer = 'layer{}'.format(layer_index)
             tf.histogram_summary(layer + '_filter', weights_filter)
             tf.histogram_summary(layer + '_gate', weights_gate)
-            tf.histogram_summary(layer + '_dense', weights_dense)
+            if not is_last_layer:
+                tf.histogram_summary(layer + '_dense', weights_dense)
             tf.histogram_summary(layer + '_skip', weights_skip)
             if self.use_biases:
                 tf.histogram_summary(layer + '_biases_filter', filter_bias)
@@ -319,7 +324,10 @@ class WaveNetModel(object):
                 tf.histogram_summary(layer + '_biases_dense', dense_bias)
                 tf.histogram_summary(layer + '_biases_skip', skip_bias)
 
-        return skip_contribution, input_batch + transformed
+        if is_last_layer:
+            return skip_contribution, None
+        else:
+            return skip_contribution, input_batch + transformed
 
     def _generator_conv(self, input_batch, state_batch, weights):
         '''Perform convolution for a single convolutional processing step.'''
@@ -395,9 +403,10 @@ class WaveNetModel(object):
         with tf.name_scope('dilated_stack'):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
+                    is_last_layer = layer_index == (len(self.dilations) - 1)
                     output, current_layer = self._create_dilation_layer(
                         current_layer, layer_index, dilation,
-                        global_condition_batch)
+                        global_condition_batch, is_last_layer)
                     outputs.append(output)
 
         with tf.name_scope('postprocessing'):
