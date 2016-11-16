@@ -8,17 +8,19 @@ import librosa
 import numpy as np
 import tensorflow as tf
 
+FILE_PATTERN = r'p([0-9]+)_([0-9]+)\.wav'
+
 
 def get_category_cardinality(files):
-    id_reg_expression = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
+    id_reg_expression = re.compile(FILE_PATTERN)
     min_id = None
     max_id = None
     for filename in files:
         matches = id_reg_expression.findall(filename)[0]
         id, recording_id = [int(id_) for id_ in matches]
-        if id < min_id or min_id is None:
+        if min_id is None or id < min_id:
             min_id = id
-        elif id > max_id or max_id is None:
+        elif max_id is None or id > max_id:
             max_id = id
 
     return min_id, max_id
@@ -26,7 +28,7 @@ def get_category_cardinality(files):
 
 def randomize_files(files):
     for file in files:
-        file_index = random.randint(0, (len(files)-1))
+        file_index = random.randint(0, (len(files) - 1))
         yield files[file_index]
 
 
@@ -42,7 +44,7 @@ def find_files(directory, pattern='*.wav'):
 def load_generic_audio(directory, sample_rate):
     '''Generator that yields audio waveforms from the directory.'''
     files = find_files(directory)
-    id_reg_exp = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
+    id_reg_exp = re.compile(FILE_PATTERN)
     print("files length: {}".format(len(files)))
     randomized_files = randomize_files(files)
     for filename in randomized_files:
@@ -72,7 +74,7 @@ def trim_silence(audio, threshold):
 def not_all_have_id(files):
     ''' Return true iff any of the filenames does not conform to the pattern
         we require for determining the category id.'''
-    id_reg_exp = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
+    id_reg_exp = re.compile(FILE_PATTERN)
     for file in files:
         ids = id_reg_exp.findall(file)
         if ids is None:
@@ -89,7 +91,7 @@ class AudioReader(object):
                  coord,
                  sample_rate,
                  gc_enabled,
-                 sample_size=None,
+                 sample_size,
                  silence_threshold=None,
                  queue_size=64):
         self.audio_dir = audio_dir
@@ -164,25 +166,17 @@ class AudioReader(object):
                               "threshold, or adjust volume of the audio."
                               .format(filename))
 
-                if self.sample_size:
-                    # Cut samples into fixed size pieces
-                    buffer_ = np.append(buffer_, audio)
-                    while len(buffer_) > 0:
-                        piece = np.reshape(buffer_[:self.sample_size], [-1, 1])
-                        sess.run(self.enqueue,
-                                 feed_dict={self.sample_placeholder: piece})
-                        buffer_ = buffer_[self.sample_size:]
-                        if self.gc_enabled:
-                            sess.run(self.gc_enqueue,
-                                     feed_dict={self.id_placeholder:
-                                                category_id})
-                else:
+                # Cut samples into fixed size pieces
+                buffer_ = np.append(buffer_, audio)
+                while len(buffer_) > 0:
+                    piece = np.reshape(buffer_[:self.sample_size], [-1, 1])
                     sess.run(self.enqueue,
-                             feed_dict={self.sample_placeholder: audio})
+                             feed_dict={self.sample_placeholder: piece})
+                    buffer_ = buffer_[self.sample_size:]
                     if self.gc_enabled:
                         sess.run(self.gc_enqueue,
                                  feed_dict={self.id_placeholder:
-                                            categeory_id})
+                                            category_id})
 
     def start_threads(self, sess, n_threads=1):
         for _ in range(n_threads):
