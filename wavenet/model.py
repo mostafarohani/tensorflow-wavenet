@@ -305,9 +305,10 @@ class WaveNetModel(object):
             out, weights_skip, stride=1, padding="SAME", name="skip")
 
         if self.use_biases:
-            dense_bias = variables['dense_bias']
+            if not is_last_layer:
+                dense_bias = variables['dense_bias']
+                transformed = transformed + dense_bias
             skip_bias = variables['skip_bias']
-            transformed = transformed + dense_bias
             skip_contribution = skip_contribution + skip_bias
 
         if self.histograms:
@@ -385,8 +386,7 @@ class WaveNetModel(object):
 
         return skip_contribution, input_batch + transformed
 
-    def _create_network(self, input_batch, global_condition_batch,
-                        is_last_layer):
+    def _create_network(self, input_batch, global_condition_batch):
         '''Construct the WaveNet network.'''
         outputs = []
         current_layer = input_batch
