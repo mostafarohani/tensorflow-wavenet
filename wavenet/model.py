@@ -384,8 +384,7 @@ class WaveNetModel(object):
 
         return skip_contribution, input_batch + transformed
 
-    def _create_network(self, input_batch, global_condition_batch,
-                        is_last_layer):
+    def _create_network(self, input_batch, global_condition_batch):
         '''Construct the WaveNet network.'''
         outputs = []
         current_layer = input_batch
