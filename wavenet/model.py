@@ -300,9 +300,10 @@ class WaveNetModel(object):
             out, weights_skip, stride=1, padding="SAME", name="skip")
 
         if self.use_biases:
-            dense_bias = variables['dense_bias']
+            if not is_last_layer:
+                dense_bias = variables['dense_bias']
+                transformed = transformed + dense_bias
             skip_bias = variables['skip_bias']
-            transformed = transformed + dense_bias
             skip_contribution = skip_contribution + skip_bias
 
         if self.histograms:
