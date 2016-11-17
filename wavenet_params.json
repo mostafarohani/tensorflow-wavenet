@@ -13,5 +13,5 @@
     "skip_channels": 1024,
     "use_biases": true,
     "scalar_input": true,
-    "initial_filter_width": 8
+    "initial_filter_width": 2
 }
