@@ -1,1 +1,1 @@
-python train.py --data_dir=/media/mass1/audio_data/VCTK-Corpus --logdir=/media/mass1/logs/gc/train/2016-11-14T12-21-18 --learning_rate=0.0002 --momentum=0.9 --optimizer=rmsprop --gc_channels=32 --checkpoint_every=1000 --silence_threshold=0.05 --num_steps=500000
+python train.py --data_dir=/media/mass1/audio_data/VCTK-Corpus --logdir=/media/mass1/logs/gc/train/2016-11-17T05-14-04 --learning_rate=0.00004 --momentum=0.9 --optimizer=adam --gc_channels=32 --checkpoint_every=1000 --silence_threshold=0.05 --num_steps=500000
