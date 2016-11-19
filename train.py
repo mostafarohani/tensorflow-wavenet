@@ -244,6 +244,10 @@ def main():
     loss = net.loss(input_batch=audio_batch,
                     global_condition_batch=gc_id_batch,
                     l2_regularization_strength=args.l2_regularization_strength)
+    test_loss = net.loss(input_batch=test_audio_batch,
+                         global_condition_batch=test_gc_id_batch,
+                         l2_regularization_strength=
+                            args.l2_regularization_strength)
     optimizer = optimizer_factory[args.optimizer](
                     learning_rate=args.learning_rate,
                     momentum=args.momentum)
@@ -281,6 +285,7 @@ def main():
     reader.start_threads(sess)
 
     step = None
+    test_interval = wavenet_params['test_interval']
     try:
         last_saved_step = saved_global_step
         for step in range(saved_global_step + 1, args.num_steps):
@@ -303,6 +308,12 @@ def main():
                     f.write(tl.generate_chrome_trace_format(show_memory=True))
             else:
                 summary, loss_value, _ = sess.run([summaries, loss, optim])
+                writer.add_summary(summary, step)
+
+
+            if test_interval > 0 and step % test_interval == 0:
+                test_loss_value = compute_test_loss(summaries, test_steps,
+                                                    test_loss)
                 writer.add_summary(summary, step)
 
             duration = time.time() - start_time
