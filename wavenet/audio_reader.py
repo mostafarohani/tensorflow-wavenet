@@ -92,6 +92,7 @@ class AudioReader(object):
                  sample_rate,
                  gc_enabled,
                  sample_size,
+                 do_test,
                  silence_threshold=None,
                  queue_size=32):
         self.audio_dir = audio_dir
@@ -107,11 +108,28 @@ class AudioReader(object):
                                          shapes=[(None, 1)])
         self.enqueue = self.queue.enqueue([self.sample_placeholder])
 
+        if do_test:
+            self.test_sample_placeholder(dtype=tf.float32, shape=None)
+            self.test_queue = tf.PaddingFIFOQueue(queue_size,
+                                                  ['float32'],
+                                                  shapes=[(None,1])
+            self.test_enqueue = self.test_queue.enqueue(
+                [self.test_sample_placeholder])
+
         if self.gc_enabled:
             self.id_placeholder = tf.placeholder(dtype=tf.int32, shape=())
             self.gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
                                                 shapes=[()])
             self.gc_enqueue = self.gc_queue.enqueue([self.id_placeholder])
+            if do_test:
+                self.test_id_placeholder = tf.placeholder(dtype=tf.int32,
+                                                          shape=())
+                self.test_gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
+                                                    shapes=[()])
+                self.test_gc_enqueue = self.test_gc_queue.enqueue(
+                    [self.test_id_placeholder])
+
+
 
         # TODO Find a better way to check this.
         # Checking inside the AudioReader's thread makes it hard to terminate
@@ -145,6 +163,12 @@ class AudioReader(object):
 
     def dequeue_gc(self, num_elements):
         return self.gc_queue.dequeue_many(num_elements)
+
+    def dequeue_test_audio(self, num_elements):
+        return self.test_queue.dequeue_many(num_elements)
+
+    def dequeue_test_gc_id(self, num_elements):
+        return self.test_gc_queue.dequeue_many(num_elements)
 
     def thread_main(self, sess):
         buffer_ = np.array([])

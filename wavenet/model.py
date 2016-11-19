@@ -597,6 +597,7 @@ class WaveNetModel(object):
              input_batch,
              global_condition_batch=None,
              l2_regularization_strength=None,
+             loss_prefix='',
              name='wavenet'):
         '''Creates a WaveNet network and returns the autoencoding loss.
 
@@ -633,7 +634,7 @@ class WaveNetModel(object):
                     tf.reshape(shifted, [-1, self.quantization_channels]))
                 reduced_loss = tf.reduce_mean(loss)
 
-                tf.scalar_summary('loss', reduced_loss)
+                tf.scalar_summary(loss_prefix+'loss', reduced_loss)
 
                 if l2_regularization_strength is None:
                     return reduced_loss
@@ -647,7 +648,7 @@ class WaveNetModel(object):
                     total_loss = (reduced_loss +
                                   l2_regularization_strength * l2_loss)
 
-                    tf.scalar_summary('l2_loss', l2_loss)
-                    tf.scalar_summary('total_loss', total_loss)
+                    tf.scalar_summary(loss_prefix+'l2_loss', l2_loss)
+                    tf.scalar_summary(loss_prefix+'total_loss', total_loss)
 
                     return total_loss

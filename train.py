@@ -179,6 +179,27 @@ def validate_directories(args):
         'restore_from': restore_from
     }
 
+def get_input_batches(gc_enabled, test_interval, reader, batch_size):
+    audio_batch = reader.dequeue(args.batch_size)
+    gc_id_batch = None
+    if gc_enabled:
+        gc_id_batch = reader.dequeue_gc(batch_size)
+
+    test_audio_batch = None
+    test_gc_id_batch = None
+    if test_interval > 0:
+        test_audio_batch = reader.dequeue_test_audio(1)
+        if gc_enabled:
+            test_gc_id_batch = reader.dequeue_test_gc_id(1)
+    return audio_batch, gc_id_batch, test_audio_batch, test_gc_id_batch
+
+def compute_test_loss(sess, test_steps, test_loss):
+    accumulator = 0.0f
+    for iter in range(test_steps):
+        test_loss_value = sess.run(test_loss)
+        accumulator += test_loss_value
+    accumulator /= test_steps
+    return accumulator
 
 def main():
     args = get_arguments()
@@ -203,6 +224,7 @@ def main():
 
     # Create coordinator.
     coord = tf.train.Coordinator()
+    test_interval = wavenet_params['test_interval']
 
     # Load raw waveform from VCTK corpus.
     with tf.name_scope('create_inputs'):
@@ -218,11 +240,10 @@ def main():
             gc_enabled=gc_enabled,
             sample_size=args.sample_size,
             silence_threshold=args.silence_threshold)
-        audio_batch = reader.dequeue(args.batch_size)
-        if gc_enabled:
-            gc_id_batch = reader.dequeue_gc(args.batch_size)
-        else:
-            gc_id_batch = None
+
+        audio_batch, gc_id_batch, test_audio_batch, test_gc_id_batch = \
+            get_input_batches(gc_enabled, test_interval, reader,
+                              args.batch_size)
 
     # Create network.
     net = WaveNetModel(
@@ -247,7 +268,8 @@ def main():
     test_loss = net.loss(input_batch=test_audio_batch,
                          global_condition_batch=test_gc_id_batch,
                          l2_regularization_strength=
-                            args.l2_regularization_strength)
+                            args.l2_regularization_strength,
+                         loss_prefix='test_')
     optimizer = optimizer_factory[args.optimizer](
                     learning_rate=args.learning_rate,
                     momentum=args.momentum)
@@ -285,7 +307,6 @@ def main():
     reader.start_threads(sess)
 
     step = None
-    test_interval = wavenet_params['test_interval']
     try:
         last_saved_step = saved_global_step
         for step in range(saved_global_step + 1, args.num_steps):
@@ -310,15 +331,17 @@ def main():
                 summary, loss_value, _ = sess.run([summaries, loss, optim])
                 writer.add_summary(summary, step)
 
-
+            # Print an asterisk only if we've recomputed test loss.
+            test_computed = ' '
             if test_interval > 0 and step % test_interval == 0:
-                test_loss_value = compute_test_loss(summaries, test_steps,
-                                                    test_loss)
-                writer.add_summary(summary, step)
+                test_loss_value = compute_test_loss(test_steps, test_loss)
+                test_computed = '*'
 
             duration = time.time() - start_time
-            print('step {:d} - loss = {:.3f}, ({:.3f} sec/step)'
-                  .format(step, loss_value, duration))
+            print('step {:d} - loss = {:.3f}, last test loss = {:3f},'
+                  ' ({:.3f} sec/step) {}'
+                  .format(step, loss_value, test_loss_value, duration,
+                          test_computed))
 
             if step % args.checkpoint_every == 0:
                 save(saver, sess, logdir, step)
