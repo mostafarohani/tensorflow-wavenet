@@ -129,8 +129,6 @@ class AudioReader(object):
                 self.test_gc_enqueue = self.test_gc_queue.enqueue(
                     [self.test_id_placeholder])
 
-
-
         # TODO Find a better way to check this.
         # Checking inside the AudioReader's thread makes it hard to terminate
         # the execution of the script, so we do it in the constructor for now.
