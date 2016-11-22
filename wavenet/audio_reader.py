@@ -41,12 +41,26 @@ def find_files(directory, pattern='*.wav'):
     return files
 
 
-def load_generic_audio(directory, sample_rate):
+def matches_test_pattern(test_reg_exp, filename):
+    return test_reg_exp.match(filename) is not None
+
+
+def load_generic_audio(directory, sample_rate, test_pattern,
+                       is_train_not_test):
     '''Generator that yields audio waveforms from the directory.'''
     files = find_files(directory)
+    # Files that match the test pattern are used in testing, all other
+    # files are used in training.
+    test_reg_exp = re.compile(test_pattern)
+    new_files = []
+    for file in files:
+        if matches_test_pattern(test_reg_exp, file) != is_train_not_test:
+            new_files.append(file)
+    files = new_files
+
     id_reg_exp = re.compile(FILE_PATTERN)
-    print("files length: {}".format(len(files)))
     randomized_files = randomize_files(files)
+
     for filename in randomized_files:
         ids = id_reg_exp.findall(filename)
         if ids is None:
@@ -92,7 +106,7 @@ class AudioReader(object):
                  sample_rate,
                  gc_enabled,
                  sample_size,
-                 do_test,
+                 test_pattern=None,
                  silence_threshold=None,
                  queue_size=32):
         self.audio_dir = audio_dir
@@ -102,26 +116,30 @@ class AudioReader(object):
         self.silence_threshold = silence_threshold
         self.gc_enabled = gc_enabled
         self.threads = []
+        self.test_pattern = test_pattern
         self.sample_placeholder = tf.placeholder(dtype=tf.float32, shape=None)
         self.queue = tf.PaddingFIFOQueue(queue_size,
                                          ['float32'],
                                          shapes=[(None, 1)])
         self.enqueue = self.queue.enqueue([self.sample_placeholder])
-
-        if do_test:
-            self.test_sample_placeholder(dtype=tf.float32, shape=None)
+        self.do_test = len(test_pattern) > 0 if test_pattern \
+                                                is not None else False
+        if self.do_test:
+            self.test_sample_placeholder = tf.placeholder(dtype=tf.float32,
+                                                          shape=None)
             self.test_queue = tf.PaddingFIFOQueue(queue_size,
                                                   ['float32'],
-                                                  shapes=[(None,1])
+                                                  shapes=[(None,1)])
             self.test_enqueue = self.test_queue.enqueue(
                 [self.test_sample_placeholder])
+
 
         if self.gc_enabled:
             self.id_placeholder = tf.placeholder(dtype=tf.int32, shape=())
             self.gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
                                                 shapes=[()])
             self.gc_enqueue = self.gc_queue.enqueue([self.id_placeholder])
-            if do_test:
+            if self.do_test:
                 self.test_id_placeholder = tf.placeholder(dtype=tf.int32,
                                                           shape=())
                 self.test_gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
@@ -168,12 +186,30 @@ class AudioReader(object):
     def dequeue_test_gc_id(self, num_elements):
         return self.test_gc_queue.dequeue_many(num_elements)
 
-    def thread_main(self, sess):
+    def thread_main(self, sess, is_train_not_test):
         buffer_ = np.array([])
         stop = False
+
+        # Whether to enqueue training or test data.
+        if is_train_not_test:
+            # Enqueue training data.
+            enqueue_op = self.enqueue
+            sample_placeholder = self.sample_placeholder
+            if self.gc_enabled:
+                gc_enqueue_op = self.gc_enqueue
+                id_placeholder = self.id_placeholder
+        else:
+            # Enqueue test data.
+            enqueue_op = self.test_enqueue
+            sample_placeholder = self.test_sample_placeholder
+            if self.gc_enabled:
+                gc_enqueue_op = self.test_gc_enqueue
+                id_placeholder = self.test_id_placeholder
+
         # Go through the dataset multiple times
         while not stop:
-            iterator = load_generic_audio(self.audio_dir, self.sample_rate)
+            iterator = load_generic_audio(self.audio_dir, self.sample_rate,
+                                          self.test_pattern, is_train_not_test)
             for audio, filename, category_id in iterator:
                 if self.coord.should_stop():
                     stop = True
@@ -192,18 +228,25 @@ class AudioReader(object):
                 buffer_ = np.append(buffer_, audio)
                 while len(buffer_) > 0:
                     piece = np.reshape(buffer_[:self.sample_size], [-1, 1])
-                    sess.run(self.enqueue,
-                             feed_dict={self.sample_placeholder: piece})
+                    sess.run(enqueue_op,
+                             feed_dict={sample_placeholder: piece})
                     buffer_ = buffer_[self.sample_size:]
                     if self.gc_enabled:
-                        sess.run(self.gc_enqueue,
-                                 feed_dict={self.id_placeholder:
-                                            category_id})
+                        sess.run(gc_enqueue_op,
+                                 feed_dict={id_placeholder: category_id})
+
+    def _start_thread(self, sess, is_train_not_test):
+        thread = threading.Thread(target=self.thread_main,
+                                  args=(sess, is_train_not_test,))
+        thread.daemon = True  # Thread will close when parent quits.
+        thread.start()
+        self.threads.append(thread)
 
     def start_threads(self, sess, n_threads=1):
         for _ in range(n_threads):
-            thread = threading.Thread(target=self.thread_main, args=(sess,))
-            thread.daemon = True  # Thread will close when parent quits.
-            thread.start()
-            self.threads.append(thread)
+            self._start_thread(sess, True)
+            if self.do_test:
+                self._start_thread(sess, False)
         return self.threads
+
+

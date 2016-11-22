@@ -180,7 +180,7 @@ def validate_directories(args):
     }
 
 def get_input_batches(gc_enabled, test_interval, reader, batch_size):
-    audio_batch = reader.dequeue(args.batch_size)
+    audio_batch = reader.dequeue(batch_size)
     gc_id_batch = None
     if gc_enabled:
         gc_id_batch = reader.dequeue_gc(batch_size)
@@ -194,7 +194,7 @@ def get_input_batches(gc_enabled, test_interval, reader, batch_size):
     return audio_batch, gc_id_batch, test_audio_batch, test_gc_id_batch
 
 def compute_test_loss(sess, test_steps, test_loss):
-    accumulator = 0.0f
+    accumulator = 0.0
     for iter in range(test_steps):
         test_loss_value = sess.run(test_loss)
         accumulator += test_loss_value
@@ -222,6 +222,8 @@ def main():
     with open(args.wavenet_params, 'r') as f:
         wavenet_params = json.load(f)
 
+    print("test_pattern:", wavenet_params["test_pattern"])
+
     # Create coordinator.
     coord = tf.train.Coordinator()
     test_interval = wavenet_params['test_interval']
@@ -239,6 +241,7 @@ def main():
             sample_rate=wavenet_params['sample_rate'],
             gc_enabled=gc_enabled,
             sample_size=args.sample_size,
+            test_pattern=wavenet_params['test_pattern'],
             silence_threshold=args.silence_threshold)
 
         audio_batch, gc_id_batch, test_audio_batch, test_gc_id_batch = \
@@ -307,6 +310,7 @@ def main():
     reader.start_threads(sess)
 
     step = None
+    test_loss_value = 0.0
     try:
         last_saved_step = saved_global_step
         for step in range(saved_global_step + 1, args.num_steps):
@@ -334,7 +338,9 @@ def main():
             # Print an asterisk only if we've recomputed test loss.
             test_computed = ' '
             if test_interval > 0 and step % test_interval == 0:
-                test_loss_value = compute_test_loss(test_steps, test_loss)
+                test_steps = wavenet_params["test_steps"]
+                test_loss_value = compute_test_loss(sess, test_steps,
+                                                    test_loss)
                 test_computed = '*'
 
             duration = time.time() - start_time
