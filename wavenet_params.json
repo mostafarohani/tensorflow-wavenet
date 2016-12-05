@@ -13,5 +13,9 @@
     "use_biases": true,
     "scalar_input": false,
     "initial_filter_width": 32,
-    "residual_postproc": false
+    "residual_postproc": false,
+    "styles": ["guitar",
+               "male",
+               "vocal",
+               "synth"]
 }

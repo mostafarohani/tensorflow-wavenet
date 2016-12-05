@@ -9,8 +9,9 @@ import os
 import librosa
 import numpy as np
 import tensorflow as tf
+import spacy
 
-from wavenet import WaveNetModel, mu_law_decode, mu_law_encode, audio_reader
+from wavenet import WaveNetModel, mu_law_decode, mu_law_encode, audio_reader, get_data
 
 SAMPLES = 16000
 TEMPERATURE = 1.0
@@ -19,6 +20,7 @@ WINDOW = 8000
 WAVENET_PARAMS = './wavenet_params.json'
 SAVE_EVERY = None
 SILENCE_THRESHOLD = 0.1
+N_CLASSES = 50
 
 
 def get_arguments():
@@ -32,7 +34,8 @@ def get_arguments():
     def _ensure_positive_float(f):
         """Ensure argument is a positive float."""
         if float(f) < 0:
-            raise argparse.ArgumentTypeError('Argument must be greater than zero')
+            raise argparse.ArgumentTypeError(
+                'Argument must be greater than zero')
         return float(f)
 
     parser = argparse.ArgumentParser(description='WaveNet generation script')
@@ -97,12 +100,28 @@ def get_arguments():
         default=None,
         help='Number of categories upon which we globally condition.')
     parser.add_argument(
+        '--glove_channels',
+        type=int,
+        default=None,
+        help='Number of channels for the glove encoding of the text '
+             'spoken by the speakers')
+    parser.add_argument(
         '--gc_id',
         type=int,
         default=None,
         help='ID of category to generate, if globally conditioned.')
+    parser.add_argument(
+        '--text',
+        type=str,
+        default=None,
+        help='text to be spoken, if conditioned on text.')
+    parser.add_argument(
+        '--using_magna',
+        type=bool,
+        default=False,
+        help='true if network trained on magnatagatune')
     arguments = parser.parse_args()
-    if arguments.gc_channels is not None:
+    if arguments.gc_channels is not None and arguments.using_magna == False:
         if arguments.gc_cardinality is None:
             raise ValueError("Globally conditioning but gc_cardinality not "
                              "specified. Use --gc_cardinality=377 for full "
@@ -110,8 +129,12 @@ def get_arguments():
 
         if arguments.gc_id is None:
             raise ValueError("Globally conditioning, but global condition was "
-                              "not specified. Use --gc_id to specify global "
-                              "condition.")
+                             "not specified. Use --gc_id to specify global "
+                             "condition.")
+    if arguments.glove_channels is not None:
+        if arguments.text is None:
+            raise ValueError("Conditioned on text, but do no specify text which "
+                             "should be said. Use --text to specify ")
 
     return arguments
 
@@ -132,8 +155,8 @@ def create_seed(filename,
 
     quantized = mu_law_encode(audio, quantization_channels)
     cut_index = tf.cond(tf.size(quantized) < tf.constant(window_size),
-            lambda: tf.size(quantized),
-            lambda: tf.constant(window_size))
+                        lambda: tf.size(quantized),
+                        lambda: tf.constant(window_size))
 
     return quantized[:cut_index]
 
@@ -145,8 +168,19 @@ def main():
     with open(args.wavenet_params, 'r') as config_file:
         wavenet_params = json.load(config_file)
 
-    sess = tf.Session()
+    if (args.using_magna):
+        styles = wavenet_params['styles']
+        header = get_data(N_CLASSES)[0]
+        conditions = np.zeros(N_CLASSES)
 
+        for style in styles:
+            conditions[header.index(style)] = 1
+        cardinality = N_CLASSES
+    else:
+        conditions = args.gc_id
+        cardinality = args.gc_cardinality
+
+    sess = tf.Session()
     net = WaveNetModel(
         batch_size=1,
         dilations=wavenet_params['dilations'],
@@ -159,15 +193,24 @@ def main():
         scalar_input=wavenet_params['scalar_input'],
         initial_filter_width=wavenet_params['initial_filter_width'],
         global_condition_channels=args.gc_channels,
-        global_condition_cardinality=args.gc_cardinality,
-        residual_postproc=wavenet_params["residual_postproc"])
+        global_condition_cardinality=cardinality,
+        glove_channels=args.glove_channels,
+        residual_postproc=wavenet_params["residual_postproc"],
+        use_magna=args.using_magna)
 
     samples = tf.placeholder(tf.int32)
 
-    if args.fast_generation:
-        next_sample = net.predict_proba_incremental(samples, args.gc_id)
+    if args.text is not None:
+        nlp = spacy.load('en', vectors='en_glove_cc_300_1m_vectors')
+        word_vec = nlp(u'%s' % args.text).vector
     else:
-        next_sample = net.predict_proba(samples, args.gc_id)
+        word_vec = None
+
+    if args.fast_generation:
+        next_sample = net.predict_proba_incremental(
+            samples, conditions, word_vec)
+    else:
+        next_sample = net.predict_proba(samples, conditions, word_vec)
 
     if args.fast_generation:
         sess.run(tf.initialize_all_variables())
@@ -228,13 +271,17 @@ def main():
         # Scale prediction distribution using temperature.
         np.seterr(divide='ignore')
         scaled_prediction = np.log(prediction) / args.temperature
-        scaled_prediction = scaled_prediction - np.logaddexp.reduce(scaled_prediction)
+        scaled_prediction = scaled_prediction - \
+            np.logaddexp.reduce(scaled_prediction)
         scaled_prediction = np.exp(scaled_prediction)
         np.seterr(divide='warn')
 
-        # Prediction distribution at temperature=1.0 should be unchanged after scaling.
+        # Prediction distribution at temperature=1.0 should be unchanged after
+        # scaling.
         if args.temperature == 1.0:
-            np.testing.assert_allclose(prediction, scaled_prediction, atol=1e-5, err_msg='Prediction scaling at temperature=1.0 is not working as intended.')
+            np.testing.assert_allclose(
+                prediction, scaled_prediction, atol=1e-5,
+                err_msg='Prediction scaling at temperature=1.0 is not working as intended.')
 
         sample = np.random.choice(
             np.arange(quantization_channels), p=scaled_prediction)

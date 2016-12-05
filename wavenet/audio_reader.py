@@ -3,11 +3,13 @@ import os
 import random
 import re
 import threading
-
+import spacy
 import librosa
 import numpy as np
 import tensorflow as tf
 
+
+nlp = spacy.load('en', vectors='en_glove_cc_300_1m_vectors')
 
 def get_category_cardinality(files):
     id_reg_expression = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
@@ -38,25 +40,49 @@ def find_files(directory, pattern='*.wav'):
             files.append(os.path.join(root, filename))
     return files
 
+def label_text(texts, txt_reg_exp):
+    labeled_texts = {}
+    glove_dict = {}
+    for text in texts:
+        label = txt_reg_exp.findall(text)
+        if label is not None and len(label) != 0:
+            labeled_texts[label[0][1]] = text
+            if label[0][1] not in glove_dict.keys():
+                glove_dict[text] = nlp(u'%s' % text).vector.reshape((1,-1))
+
+    return labeled_texts, glove_dict
 
 def load_generic_audio(directory, sample_rate):
     '''Generator that yields audio waveforms from the directory.'''
     files = find_files(directory)
+    texts = find_files(directory, pattern="*.txt")
+    txt_reg_exp = re.compile(r'p([0-9]+)_([0-9]+)\.txt')
+    get_text, glove_dict = label_text(texts, txt_reg_exp)
     id_reg_exp = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
     print("files length: {}".format(len(files)))
+    zero_vec = np.zeros((1,300))
     randomized_files = randomize_files(files)
     for filename in randomized_files:
         ids = id_reg_exp.findall(filename)
+        if ids is None or len(ids) == 0:
+            continue
+        ids = ids[0]
+        if ids[1] in get_text.keys():
+            text = get_text[ids[1]]
+            word_vec = glove_dict[text]
+        else:
+            word_vec = zero_vec
+        
         if ids is None:
             # The file name does not match the pattern containing ids, so
             # there is no id.
             category_id = None
         else:
             # The file name matches the pattern for containing ids.
-            category_id = int(ids[0][0])
+            category_id = int(ids[0])
         audio, _ = librosa.load(filename, sr=sample_rate, mono=True)
         audio = audio.reshape(-1, 1)
-        yield audio, filename, category_id
+        yield audio, filename, category_id, word_vec
 
 
 def trim_silence(audio, threshold):
@@ -107,9 +133,13 @@ class AudioReader(object):
 
         if self.gc_enabled:
             self.id_placeholder = tf.placeholder(dtype=tf.int32, shape=())
+            self.text_placeholder = tf.placeholder(dtype=tf.float32, shape = (1,300))
             self.gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
                                                 shapes=[()])
+            self.txt_queue = tf.PaddingFIFOQueue(queue_size, ['float32'],
+                                                shapes=[(1, 300)])
             self.gc_enqueue = self.gc_queue.enqueue([self.id_placeholder])
+            self.txt_enqueue = self.txt_queue.enqueue([self.text_placeholder])
 
         # TODO Find a better way to check this.
         # Checking inside the AudioReader's thread makes it hard to terminate
@@ -144,13 +174,16 @@ class AudioReader(object):
     def dequeue_gc(self, num_elements):
         return self.gc_queue.dequeue_many(num_elements)
 
+    def dequeue_txt(self, num_elements):
+        return self.txt_queue.dequeue_many(num_elements)
+    
     def thread_main(self, sess):
         buffer_ = np.array([])
         stop = False
         # Go through the dataset multiple times
         while not stop:
             iterator = load_generic_audio(self.audio_dir, self.sample_rate)
-            for audio, filename, category_id in iterator:
+            for audio, filename, category_id, word_vec in iterator:
                 if self.coord.should_stop():
                     stop = True
                     break
@@ -176,6 +209,9 @@ class AudioReader(object):
                             sess.run(self.gc_enqueue,
                                      feed_dict={self.id_placeholder:
                                                 category_id})
+                            sess.run(self.txt_enqueue,
+                                     feed_dict={self.text_placeholder:
+                                                word_vec})
                 else:
                     sess.run(self.enqueue,
                              feed_dict={self.sample_placeholder: audio})
@@ -183,8 +219,11 @@ class AudioReader(object):
                         sess.run(self.gc_enqueue,
                                  feed_dict={self.id_placeholder:
                                             categeory_id})
+                        sess.run(self.txt_enqueue,
+                                 feed_dict={self.text_placeholder:
+                                            word_vec})
 
-    def start_threads(self, sess, n_threads=1):
+    def start_threads(self, sess, n_threads=4):
         for _ in range(n_threads):
             thread = threading.Thread(target=self.thread_main, args=(sess,))
             thread.daemon = True  # Thread will close when parent quits.

@@ -17,12 +17,12 @@ import time
 import tensorflow as tf
 from tensorflow.python.client import timeline
 
-from wavenet import WaveNetModel, AudioReader, optimizer_factory
+from wavenet import WaveNetModel, AudioReader, DataManager, optimizer_factory, get_data
 
 BATCH_SIZE = 1
 DATA_DIRECTORY = './VCTK-Corpus'
 LOGDIR_ROOT = './logdir'
-CHECKPOINT_EVERY = 50
+CHECKPOINT_EVERY = 2000
 NUM_STEPS = int(1e5)
 LEARNING_RATE = 1e-3
 WAVENET_PARAMS = './wavenet_params.json'
@@ -32,7 +32,13 @@ L2_REGULARIZATION_STRENGTH = 0
 SILENCE_THRESHOLD = 0.3
 EPSILON = 0.001
 MOMENTUM = 0.9
-
+# Parameters for DataManager
+SAMPLE_RATE = 16000
+SECONDS_OF_AUDIO = 3
+N_CLASSES = 50
+STD_DEV = 0.01
+MERGE_TAGS = True
+SPLIT_RANDOMLY = True
 
 def get_arguments():
     def _str_to_bool(s):
@@ -98,6 +104,11 @@ def get_arguments():
                          help='Whether to store histogram summaries.')
     parser.add_argument('--gc_channels', type=int, default=None,
                         help='Number of global condition channels.')
+    parser.add_argument('--glove_channels', type=int, default=None,
+                        help='Number of glove condition channels for word'
+                        'embeddings.')
+    parser.add_argument('--using_magna', type=bool, default=False,
+                        help='Which dataset is being used.')
     return parser.parse_args()
 
 
@@ -211,19 +222,37 @@ def main():
         silence_threshold = args.silence_threshold if args.silence_threshold > \
                                                       EPSILON else None
         gc_enabled = args.gc_channels is not None
-        reader = AudioReader(
-            args.data_dir,
-            coord,
-            sample_rate=wavenet_params['sample_rate'],
-            gc_enabled=gc_enabled,
-            sample_size=args.sample_size,
-            silence_threshold=args.silence_threshold)
-        audio_batch = reader.dequeue(args.batch_size)
-        if gc_enabled:
-            gc_id_batch = reader.dequeue_gc(args.batch_size)
-        else:
-            gc_id_batch = None
+        glove_enabled = args.glove_channels is not None
 
+        if args.using_magna:
+            header, fname_list, val, test, data_dict = get_data(N_CLASSES, 
+                                                           MERGE_TAGS, 
+                                                           SPLIT_RANDOMLY)
+            reader = DataManager(fname_list, data_dict, coord, 
+                                   SAMPLE_RATE, SECONDS_OF_AUDIO, 
+                                   N_CLASSES, 10*BATCH_SIZE)
+            audio_batch, gc_id_batch = reader.dequeue(args.batch_size)
+            gc_txt_batch = None
+            cardinality = N_CLASSES
+            print(header)
+        else:
+            reader = AudioReader(
+                args.data_dir,
+                coord,
+                sample_rate=wavenet_params['sample_rate'],
+                gc_enabled=gc_enabled,
+                sample_size=args.sample_size,
+                silence_threshold=args.silence_threshold)
+            if gc_enabled:
+                gc_id_batch = reader.dequeue_gc(args.batch_size)
+            else:
+                gc_id_batch = None
+            if glove_enabled:
+                gc_txt_batch = reader.dequeue_txt(args.batch_size)
+            else:
+                gc_txt_batch = None
+            cardinality = reader.gc_category_cardinality
+            audio_batch = reader.dequeue(args.batch_size)
     # Create network.
     net = WaveNetModel(
         batch_size=args.batch_size,
@@ -238,12 +267,15 @@ def main():
         initial_filter_width=wavenet_params["initial_filter_width"],
         histograms=args.histograms,
         global_condition_channels=args.gc_channels,
-        global_condition_cardinality=reader.gc_category_cardinality,
-        residual_postproc=wavenet_params["residual_postproc"])
+        global_condition_cardinality=cardinality,
+        glove_channels = args.glove_channels,
+        residual_postproc=wavenet_params["residual_postproc"],
+        use_magna=args.using_magna)
     if args.l2_regularization_strength == 0:
         args.l2_regularization_strength = None
     loss = net.loss(input_batch=audio_batch,
                     global_condition_batch=gc_id_batch,
+                    txt_condition_batch=gc_txt_batch,
                     l2_regularization_strength=args.l2_regularization_strength)
     optimizer = optimizer_factory[args.optimizer](
                     learning_rate=args.learning_rate,
