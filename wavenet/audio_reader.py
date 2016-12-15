@@ -11,6 +11,7 @@ import tensorflow as tf
 
 nlp = spacy.load('en', vectors='en_glove_cc_300_1m_vectors')
 
+
 def get_category_cardinality(files):
     id_reg_expression = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
     min_id = None
@@ -28,7 +29,7 @@ def get_category_cardinality(files):
 
 def randomize_files(files):
     for file in files:
-        file_index = random.randint(0, (len(files)-1))
+        file_index = random.randint(0, (len(files) - 1))
         yield files[file_index]
 
 
@@ -40,6 +41,7 @@ def find_files(directory, pattern='*.wav'):
             files.append(os.path.join(root, filename))
     return files
 
+
 def label_text(texts, txt_reg_exp):
     labeled_texts = {}
     glove_dict = {}
@@ -48,9 +50,10 @@ def label_text(texts, txt_reg_exp):
         if label is not None and len(label) != 0:
             labeled_texts[label[0][1]] = text
             if label[0][1] not in glove_dict.keys():
-                glove_dict[text] = nlp(u'%s' % text).vector.reshape((1,-1))
+                glove_dict[text] = nlp(u'%s' % text).vector.reshape((1, -1))
 
     return labeled_texts, glove_dict
+
 
 def load_generic_audio(directory, sample_rate):
     '''Generator that yields audio waveforms from the directory.'''
@@ -60,7 +63,7 @@ def load_generic_audio(directory, sample_rate):
     get_text, glove_dict = label_text(texts, txt_reg_exp)
     id_reg_exp = re.compile(r'p([0-9]+)_([0-9]+)\.wav')
     print("files length: {}".format(len(files)))
-    zero_vec = np.zeros((1,300))
+    zero_vec = np.zeros((1, 300))
     randomized_files = randomize_files(files)
     for filename in randomized_files:
         ids = id_reg_exp.findall(filename)
@@ -72,7 +75,7 @@ def load_generic_audio(directory, sample_rate):
             word_vec = glove_dict[text]
         else:
             word_vec = zero_vec
-        
+
         if ids is None:
             # The file name does not match the pattern containing ids, so
             # there is no id.
@@ -107,6 +110,7 @@ def not_all_have_id(files):
 
 
 class AudioReader(object):
+
     '''Generic background audio reader that preprocesses audio files
     and enqueues them into a TensorFlow queue.'''
 
@@ -125,19 +129,20 @@ class AudioReader(object):
         self.silence_threshold = silence_threshold
         self.gc_enabled = gc_enabled
         self.threads = []
-        self.sample_placeholder = tf.placeholder(dtype=tf.float32, shape=None)
+        self.sample_placeholder = tf.placeholder(dtype=tf.float32, shape=(16000, 1))
         self.queue = tf.PaddingFIFOQueue(queue_size,
                                          ['float32'],
-                                         shapes=[(None, 1)])
+                                         shapes=[(16000, 1)])
         self.enqueue = self.queue.enqueue([self.sample_placeholder])
 
         if self.gc_enabled:
             self.id_placeholder = tf.placeholder(dtype=tf.int32, shape=())
-            self.text_placeholder = tf.placeholder(dtype=tf.float32, shape = (1,300))
+            self.text_placeholder = tf.placeholder(
+                dtype=tf.float32, shape=(1, 300))
             self.gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
                                                 shapes=[()])
             self.txt_queue = tf.PaddingFIFOQueue(queue_size, ['float32'],
-                                                shapes=[(1, 300)])
+                                                 shapes=[(1, 300)])
             self.gc_enqueue = self.gc_queue.enqueue([self.id_placeholder])
             self.txt_enqueue = self.txt_queue.enqueue([self.text_placeholder])
 
@@ -176,7 +181,7 @@ class AudioReader(object):
 
     def dequeue_txt(self, num_elements):
         return self.txt_queue.dequeue_many(num_elements)
-    
+
     def thread_main(self, sess):
         buffer_ = np.array([])
         stop = False
@@ -190,12 +195,14 @@ class AudioReader(object):
                 if self.silence_threshold is not None:
                     # Remove silence
                     audio = trim_silence(audio[:, 0], self.silence_threshold)
-                    audio = audio.reshape(-1, 1)
+                    audio = audio.reshape(-1, 1)[:16000]
                     if audio.size == 0:
                         print("Warning: {} was ignored as it contains only "
                               "silence. Consider decreasing trim_silence "
                               "threshold, or adjust volume of the audio."
                               .format(filename))
+                if (len(audio[:,0]) < 16000):
+                    continue;
 
                 if self.sample_size:
                     # Cut samples into fixed size pieces

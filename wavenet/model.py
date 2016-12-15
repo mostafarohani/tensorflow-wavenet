@@ -29,6 +29,7 @@ def create_bias_variable(name, shape):
 
 
 class WaveNetModel(object):
+
     '''Implements the WaveNet network for generative audio.
 
     Usage (with the architecture as in the DeepMind paper):
@@ -50,7 +51,7 @@ class WaveNetModel(object):
                  residual_channels,
                  dilation_channels,
                  skip_channels,
-                 quantization_channels=2**8,
+                 quantization_channels=2 ** 8,
                  use_biases=False,
                  scalar_input=False,
                  initial_filter_width=32,
@@ -97,14 +98,15 @@ class WaveNetModel(object):
                 categories, where N = global_condition_cardinality. If None,
                 then the global_condition tensor is regarded as a vector which
                 must have dimension global_condition_channels.
-            glove_channels: Number of channels in (embedding size) of the glove 
+            glove_channels: Number of channels in (embedding size) of the glove
                 embedded vectors for the text spoken by the speaker
             residual_postproc: Boolean to select residual connection for
                 post-processing stage.
             use_magna: True if we are training on the magnatagatune dataset
 
         '''
-        self.batch_size = batch_size
+        # self.batch_size = batch_size
+        self.batch_size = 1
         self.dilations = dilations
         self.filter_width = filter_width
         self.residual_channels = residual_channels
@@ -203,7 +205,7 @@ class WaveNetModel(object):
                                 'gc_filter',
                                 [1, self.global_condition_channels,
                                  self.dilation_channels])
-                        
+
                         if self.glove_channels is not None:
                             current['txt_gateweights'] = create_variable(
                                 'txt_gate',
@@ -272,9 +274,9 @@ class WaveNetModel(object):
                  [batch size, 1, channels]. The 1 is for the axis
                  corresponding to time so that the result is broadcast to
                  all time steps.
-             txt_condition_batch: Additional global conditioning which 
+             txt_condition_batch: Additional global conditioning which
                  incorporates the glove representation of the actual sentence
-                 being spoken by the speaker. Each vector is of size 
+                 being spoken by the speaker. Each vector is of size
                  self.glove_channels
 
         The layer contains a gated filter that connects to dense output
@@ -375,8 +377,8 @@ class WaveNetModel(object):
     def _generator_conv(self, input_batch, state_batch, weights):
         '''Perform convolution for a single convolutional processing step.'''
         # TODO generalize to filter_width > 2
-        past_weights = weights[0, :, :]
-        curr_weights = weights[1, :, :]
+        past_weights = weights[0,:,:]
+        curr_weights = weights[1,:,:]
         output = tf.matmul(state_batch, past_weights) + tf.matmul(
             input_batch, curr_weights)
         return output
@@ -404,23 +406,23 @@ class WaveNetModel(object):
             global_condition_batch = tf.reshape(global_condition_batch,
                                                 shape=(1, -1))
             weights_gc_filter = variables['gc_filtweights']
-            weights_gc_filter = weights_gc_filter[0, :, :]
+            weights_gc_filter = weights_gc_filter[0,:,:]
             output_filter += tf.matmul(global_condition_batch,
                                        weights_gc_filter)
             weights_gc_gate = variables['gc_gateweights']
-            weights_gc_gate = weights_gc_gate[0, :, :]
+            weights_gc_gate = weights_gc_gate[0,:,:]
             output_gate += tf.matmul(global_condition_batch,
                                      weights_gc_gate)
-        
-        if txt_condition_batch is not None: 
+
+        if txt_condition_batch is not None:
             txt_condition_batch = tf.reshape(txt_condition_batch,
-                                                shape=(1, -1))
+                                             shape=(1, -1))
             weights_gc_filter = variables['txt_filtweights']
-            weights_gc_filter = weights_gc_filter[0, :, :]
+            weights_gc_filter = weights_gc_filter[0,:,:]
             output_filter += tf.matmul(txt_condition_batch,
                                        weights_gc_filter)
             weights_gc_gate = variables['txt_gateweights']
-            weights_gc_gate = weights_gc_gate[0, :, :]
+            weights_gc_gate = weights_gc_gate[0,:,:]
             output_gate += tf.matmul(txt_condition_batch,
                                      weights_gc_gate)
         if self.use_biases:
@@ -430,12 +432,12 @@ class WaveNetModel(object):
         out = tf.tanh(output_filter) * tf.sigmoid(output_gate)
 
         weights_dense = variables['dense']
-        transformed = tf.matmul(out, weights_dense[0, :, :])
+        transformed = tf.matmul(out, weights_dense[0,:,:])
         if self.use_biases:
             transformed = transformed + variables['dense_bias']
 
         weights_skip = variables['skip']
-        skip_contribution = tf.matmul(out, weights_skip[0, :, :])
+        skip_contribution = tf.matmul(out, weights_skip[0,:,:])
         if self.use_biases:
             skip_contribution = skip_contribution + variables['skip_bias']
 
@@ -496,7 +498,7 @@ class WaveNetModel(object):
 
         return conv2
 
-    def _create_generator(self, input_batch, global_condition_batch, 
+    def _create_generator(self, input_batch, global_condition_batch,
                           txt_condition_batch):
         '''Construct an efficient incremental generator.'''
         init_ops = []
@@ -519,7 +521,7 @@ class WaveNetModel(object):
         push_ops.append(push)
 
         current_layer = self._generator_causal_layer(
-                            current_layer, current_state)
+            current_layer, current_state)
 
         # Add all defined dilation layers.
         with tf.name_scope('dilated_stack'):
@@ -561,11 +563,11 @@ class WaveNetModel(object):
             total = sum(outputs)
             transformed1 = tf.nn.relu(total)
 
-            conv1 = tf.matmul(transformed1, w1[0, :, :])
+            conv1 = tf.matmul(transformed1, w1[0,:,:])
             if self.use_biases:
                 conv1 = conv1 + b1
             transformed2 = tf.nn.relu(conv1)
-            conv2 = tf.matmul(transformed2, w2[0, :, :])
+            conv2 = tf.matmul(transformed2, w2[0,:,:])
             if self.use_biases:
                 conv2 = conv2 + b2
 
@@ -594,7 +596,8 @@ class WaveNetModel(object):
             embedding_table = self.variables['embeddings']['gc_embedding']
             if self.use_magna:
                 global_condition = global_condition.reshape(1, -1)
-                embedding = tf.matmul(global_condition.astype(np.float32), embedding_table)
+                embedding = tf.matmul(
+                    global_condition.astype(np.float32), embedding_table)
             else:
                 embedding = tf.nn.embedding_lookup(embedding_table,
                                                    global_condition)
@@ -610,7 +613,7 @@ class WaveNetModel(object):
             if not dims_match:
                 raise ValueError('Shape of global_condition {} does not'
                                  ' match global_condition_channels {}.'.
-                                 format(self.global_condition.get_shape(),
+                                 format(global_condition.get_shape(),
                                         self.global_condition_channels))
             embedding = global_condition
 
@@ -638,7 +641,8 @@ class WaveNetModel(object):
                 encoded = self._one_hot(waveform)
 
             gc_embedding = self._embed_gc(global_condition)
-            raw_output = self._create_network(encoded, gc_embedding, txt_embedding)
+            raw_output = self._create_network(
+                encoded, gc_embedding, txt_embedding)
             out = tf.reshape(raw_output, [-1, self.quantization_channels])
             # Cast to float64 to avoid bug in TensorFlow
             proba = tf.cast(
@@ -663,7 +667,12 @@ class WaveNetModel(object):
                                       "fast generation.")
 
         with tf.name_scope(name):
-            gc_embedding = self._embed_gc(global_condition)
+            if (type(global_condition) == int or type(global_condition) == float):
+                gc_embedding = self._embed_gc(global_condition)
+            else:
+                gc_embedding = tf.reshape(
+                    global_condition, 
+                    [self.batch_size, 1, self.global_condition_channels])
             if self.scalar_input:
                 # waveform comes in as an int selecting one of
                 # quantization_channels (256) levels corresponding to the
@@ -675,7 +684,8 @@ class WaveNetModel(object):
                 encoded = self._one_hot(waveform)
                 encoded = tf.reshape(encoded, [-1, self.quantization_channels])
 
-            raw_output = self._create_generator(encoded, gc_embedding, txt_embedding)
+            raw_output = self._create_generator(
+                encoded, gc_embedding, txt_embedding)
             out = tf.reshape(raw_output, [-1, self.quantization_channels])
             proba = tf.cast(
                 tf.nn.softmax(tf.cast(out, tf.float64)), tf.float32)
@@ -745,3 +755,111 @@ class WaveNetModel(object):
                     tf.scalar_summary('total_loss', total_loss)
 
                     return total_loss
+
+    def log_prob(self, input_batch, global_condition_batch, name="wavenet"):
+
+        with tf.name_scope(name):
+            # We mu-law encode and quantize the input audioform.
+            encoded_input = mu_law_encode(input_batch,
+                                          self.quantization_channels)
+
+            # gc_embedding = self._embed_gc(global_condition_batch)
+            gc_embedding = tf.reshape(
+                global_condition_batch,
+                [self.batch_size, 1, self.global_condition_channels])
+
+            encoded = self._one_hot(encoded_input)
+            if self.scalar_input:
+                network_input = tf.reshape(
+                    tf.cast(input_batch, tf.float32),
+                    [self.batch_size, -1, 1])
+            else:
+                network_input = encoded
+
+            raw_output = self._create_network(network_input, gc_embedding,
+                                              None)
+
+            with tf.name_scope('loss'):
+                # Shift original input left by one sample, which means that
+                # each output sample has to predict the next input sample.
+                shifted = tf.slice(encoded, [0, 1, 0],
+                                   [-1, tf.shape(encoded)[1] - 1, -1])
+                shifted = tf.pad(shifted, [[0, 0], [0, 1], [0, 0]])
+                shifted = tf.reshape(shifted, [-1, self.quantization_channels])
+
+                prediction = tf.reshape(raw_output,
+                                        [-1, self.quantization_channels])
+                activations = tf.nn.log_softmax(prediction)
+                idxs = tf.range(tf.shape(prediction)[0])
+                print(idxs.get_shape(), encoded_input.get_shape(), prediction.get_shape())
+                mask_idxs = tf.concat(
+                    1, 
+                    [tf.reshape(idxs, [-1, 1]),
+                     tf.reshape(encoded_input, [-1, 1])])
+                mask_idxs = tf.cast(mask_idxs, tf.int64)
+                mask = tf.SparseTensor(
+                    indices=mask_idxs, 
+                    values = tf.ones([16000,]), 
+                    shape = tf.shape(activations, out_type=tf.int64))
+                mask = tf.sparse_tensor_to_dense(mask)
+                pred_prob = tf.reduce_sum(mask * activations, name = "evidence")
+                return pred_prob
+
+    def sample(self, global_condition_batch, sample_length=16000,
+               fast_generation=True):
+        samples = tf.placeholder(tf.int32)
+
+        if fast_generation:
+            next_sample = net.predict_proba_incremental(
+                samples, conditions, None)
+        else:
+            next_sample = self.predict_proba(samples, conditions, None)
+
+        # if fast_generation:
+        #    sess.run(tf.initialize_all_variables())
+        #    sess.run(net.init_ops)
+
+        quantization_channels = self.quantization_channels
+        decode = mu_law_decode(
+            samples, quantization_channels)
+
+        waveform = np.random.randint(
+            quantization_channels, size=(1,)).tolist()
+
+        last_sample_timestamp = datetime.now()
+        for step in range(sample_length):
+            if fast_generation:
+                outputs = [next_sample]
+                outputs.extend(net.push_ops)
+                window = waveform[-1]
+            else:
+                if len(waveform) > args.window:
+                    window = waveform[-args.window:]
+                else:
+                    window = waveform
+                outputs = [next_sample]
+
+            # Run the WaveNet to predict the next sample.
+            prediction = sess.run(outputs, feed_dict={samples: window})[0]
+
+            # Scale prediction distribution using temperature.
+            np.seterr(divide='ignore')
+            scaled_prediction = np.log(prediction)
+            scaled_prediction = scaled_prediction - \
+                np.logaddexp.reduce(scaled_prediction)
+            scaled_prediction = np.exp(scaled_prediction)
+            np.seterr(divide='warn')
+
+            sample = np.random.choice(
+                np.arange(quantization_channels), p=scaled_prediction)
+            waveform.append(sample)
+
+            # Show progress only once per second.
+            current_sample_timestamp = datetime.now()
+            time_since_print = current_sample_timestamp - last_sample_timestamp
+            if time_since_print.total_seconds() > 5.:
+                print('Sample {:3<d}/{:3<d}'.format(step + 1, args.samples))
+                last_sample_timestamp = current_sample_timestamp
+
+        out = sess.run(decode, feed_dict={samples: waveform})
+        return out

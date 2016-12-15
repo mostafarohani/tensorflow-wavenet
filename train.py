@@ -40,6 +40,7 @@ STD_DEV = 0.01
 MERGE_TAGS = True
 SPLIT_RANDOMLY = True
 
+
 def get_arguments():
     def _str_to_bool(s):
         """Convert string to bool (in argparse context)."""
@@ -47,7 +48,6 @@ def get_arguments():
             raise ValueError('Argument needs to be a '
                              'boolean, got {}'.format(s))
         return {'true': True, 'false': False}[s.lower()]
-
 
     parser = argparse.ArgumentParser(description='WaveNet example network')
     parser.add_argument('--batch_size', type=int, default=BATCH_SIZE,
@@ -74,8 +74,9 @@ def get_arguments():
                         'This creates the new model under the dated directory '
                         'in --logdir_root. '
                         'Cannot use with --logdir.')
-    parser.add_argument('--checkpoint_every', type=int, default=CHECKPOINT_EVERY,
-                        help='How many steps to save each checkpoint after')
+    parser.add_argument(
+        '--checkpoint_every', type=int, default=CHECKPOINT_EVERY,
+        help='How many steps to save each checkpoint after')
     parser.add_argument('--num_steps', type=int, default=NUM_STEPS,
                         help='Number of training steps.')
     parser.add_argument('--learning_rate', type=float, default=LEARNING_RATE,
@@ -101,7 +102,7 @@ def get_arguments():
                         'used by sgd or rmsprop optimizer. Ignored by the '
                         'adam optimizer.')
     parser.add_argument('--histograms', type=_str_to_bool, default=False,
-                         help='Whether to store histogram summaries.')
+                        help='Whether to store histogram summaries.')
     parser.add_argument('--gc_channels', type=int, default=None,
                         help='Number of global condition channels.')
     parser.add_argument('--glove_channels', type=int, default=None,
@@ -220,17 +221,17 @@ def main():
         # Allow silence trimming to be skipped by specifying a threshold near
         # zero.
         silence_threshold = args.silence_threshold if args.silence_threshold > \
-                                                      EPSILON else None
+            EPSILON else None
         gc_enabled = args.gc_channels is not None
         glove_enabled = args.glove_channels is not None
 
         if args.using_magna:
-            header, fname_list, val, test, data_dict = get_data(N_CLASSES, 
-                                                           MERGE_TAGS, 
-                                                           SPLIT_RANDOMLY)
-            reader = DataManager(fname_list, data_dict, coord, 
-                                   SAMPLE_RATE, SECONDS_OF_AUDIO, 
-                                   N_CLASSES, 10*BATCH_SIZE)
+            header, fname_list, val, test, data_dict = get_data(N_CLASSES,
+                                                                MERGE_TAGS,
+                                                                SPLIT_RANDOMLY)
+            reader = DataManager(fname_list, data_dict, coord,
+                                 SAMPLE_RATE, SECONDS_OF_AUDIO,
+                                 N_CLASSES, 10 * BATCH_SIZE)
             audio_batch, gc_id_batch = reader.dequeue(args.batch_size)
             gc_txt_batch = None
             cardinality = N_CLASSES
@@ -268,7 +269,7 @@ def main():
         histograms=args.histograms,
         global_condition_channels=args.gc_channels,
         global_condition_cardinality=cardinality,
-        glove_channels = args.glove_channels,
+        glove_channels=args.glove_channels,
         residual_postproc=wavenet_params["residual_postproc"],
         use_magna=args.using_magna)
     if args.l2_regularization_strength == 0:
@@ -278,8 +279,8 @@ def main():
                     txt_condition_batch=gc_txt_batch,
                     l2_regularization_strength=args.l2_regularization_strength)
     optimizer = optimizer_factory[args.optimizer](
-                    learning_rate=args.learning_rate,
-                    momentum=args.momentum)
+        learning_rate=args.learning_rate,
+        momentum=args.momentum)
     trainable = tf.trainable_variables()
     optim = optimizer.minimize(loss, var_list=trainable)
 
