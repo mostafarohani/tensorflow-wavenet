@@ -803,6 +803,7 @@ class WaveNetModel(object):
                     shape = tf.shape(activations, out_type=tf.int64))
                 mask = tf.sparse_tensor_to_dense(mask)
                 pred_prob = tf.reduce_sum(mask * activations, name = "evidence")
+
                 return pred_prob
 
     def sample(self, global_condition_batch, sample_length=16000,

@@ -70,11 +70,11 @@ def load_generic_audio(directory, sample_rate):
         if ids is None or len(ids) == 0:
             continue
         ids = ids[0]
-        if ids[1] in get_text.keys():
-            text = get_text[ids[1]]
-            word_vec = glove_dict[text]
-        else:
-            word_vec = zero_vec
+#        if ids[1] in get_text.keys():
+#            text = get_text[ids[1]]
+#            word_vec = glove_dict[text]
+#        else:
+        word_vec = zero_vec
 
         if ids is None:
             # The file name does not match the pattern containing ids, so
@@ -129,7 +129,8 @@ class AudioReader(object):
         self.silence_threshold = silence_threshold
         self.gc_enabled = gc_enabled
         self.threads = []
-        self.sample_placeholder = tf.placeholder(dtype=tf.float32, shape=(16000, 1))
+        self.sample_placeholder = tf.placeholder(
+            dtype=tf.float32, shape=(16000, 1))
         self.queue = tf.PaddingFIFOQueue(queue_size,
                                          ['float32'],
                                          shapes=[(16000, 1)])
@@ -141,10 +142,10 @@ class AudioReader(object):
                 dtype=tf.float32, shape=(1, 300))
             self.gc_queue = tf.PaddingFIFOQueue(queue_size, ['int32'],
                                                 shapes=[()])
-            self.txt_queue = tf.PaddingFIFOQueue(queue_size, ['float32'],
-                                                 shapes=[(1, 300)])
+#            self.txt_queue = tf.PaddingFIFOQueue(queue_size, ['float32'],
+#                                                 shapes=[(1, 300)])
             self.gc_enqueue = self.gc_queue.enqueue([self.id_placeholder])
-            self.txt_enqueue = self.txt_queue.enqueue([self.text_placeholder])
+#            self.txt_enqueue = self.txt_queue.enqueue([self.text_placeholder])
 
         # TODO Find a better way to check this.
         # Checking inside the AudioReader's thread makes it hard to terminate
@@ -201,8 +202,8 @@ class AudioReader(object):
                               "silence. Consider decreasing trim_silence "
                               "threshold, or adjust volume of the audio."
                               .format(filename))
-                if (len(audio[:,0]) < 16000):
-                    continue;
+                if (len(audio[:, 0]) < 16000):
+                    continue
 
                 if self.sample_size:
                     # Cut samples into fixed size pieces
@@ -216,9 +217,9 @@ class AudioReader(object):
                             sess.run(self.gc_enqueue,
                                      feed_dict={self.id_placeholder:
                                                 category_id})
-                            sess.run(self.txt_enqueue,
-                                     feed_dict={self.text_placeholder:
-                                                word_vec})
+ #                           sess.run(self.txt_enqueue,
+ #                                    feed_dict={self.text_placeholder:
+ #                                               word_vec})
                 else:
                     sess.run(self.enqueue,
                              feed_dict={self.sample_placeholder: audio})
@@ -226,11 +227,11 @@ class AudioReader(object):
                         sess.run(self.gc_enqueue,
                                  feed_dict={self.id_placeholder:
                                             categeory_id})
-                        sess.run(self.txt_enqueue,
-                                 feed_dict={self.text_placeholder:
-                                            word_vec})
+#                        sess.run(self.txt_enqueue,
+#                                 feed_dict={self.text_placeholder:
+#                                            word_vec})
 
-    def start_threads(self, sess, n_threads=4):
+    def start_threads(self, sess, n_threads=1):
         for _ in range(n_threads):
             thread = threading.Thread(target=self.thread_main, args=(sess,))
             thread.daemon = True  # Thread will close when parent quits.
